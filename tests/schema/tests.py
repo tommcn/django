@@ -55,7 +55,6 @@ from django.db.models.indexes import IndexExpression
 from django.db.transaction import TransactionManagementError, atomic
 from django.test import TransactionTestCase, skipIfDBFeature, skipUnlessDBFeature
 from django.test.utils import CaptureQueriesContext, isolate_apps, register_lookup
-from django.utils import timezone
 
 from .fields import CustomManyToManyField, InheritedManyToManyField, MediumBlobField
 from .models import (
@@ -2317,6 +2316,8 @@ class SchemaTests(TransactionTestCase):
                 # This fails if the unique index name isn't quoted.
                 editor.alter_unique_together(TagUniqueRename, [], (("title", "slug2"),))
         finally:
+            with connection.schema_editor() as editor:
+                editor.delete_model(TagUniqueRename)
             TagUniqueRename._meta.db_table = old_table_name
 
     @isolate_apps("schema")
@@ -2394,6 +2395,7 @@ class SchemaTests(TransactionTestCase):
     def test_remove_field_unique_does_not_remove_meta_constraints(self):
         with connection.schema_editor() as editor:
             editor.create_model(AuthorWithUniqueName)
+        self.local_models = [AuthorWithUniqueName]
         # Add the custom unique constraint
         constraint = UniqueConstraint(fields=["name"], name="author_name_uniq")
         custom_constraint_name = constraint.name
@@ -2526,6 +2528,7 @@ class SchemaTests(TransactionTestCase):
     def test_remove_unique_together_does_not_remove_meta_constraints(self):
         with connection.schema_editor() as editor:
             editor.create_model(AuthorWithUniqueNameAndBirthday)
+        self.local_models = [AuthorWithUniqueNameAndBirthday]
         # Add the custom unique constraint
         constraint = UniqueConstraint(
             fields=["name", "birthday"], name="author_name_birthday_uniq"
@@ -2924,6 +2927,7 @@ class SchemaTests(TransactionTestCase):
     def test_remove_index_together_does_not_remove_meta_indexes(self):
         with connection.schema_editor() as editor:
             editor.create_model(AuthorWithIndexedNameAndBirthday)
+        self.local_models = [AuthorWithIndexedNameAndBirthday]
         # Add the custom index
         index = Index(fields=["name", "birthday"], name="author_name_birthday_idx")
         custom_index_name = index.name
@@ -3062,6 +3066,7 @@ class SchemaTests(TransactionTestCase):
         """
         with connection.schema_editor() as editor:
             editor.create_model(AuthorWithIndexedName)
+        self.local_models = [AuthorWithIndexedName]
         # Ensure the table has its index
         self.assertIn("name", self.get_indexes(AuthorWithIndexedName._meta.db_table))
 
@@ -3650,6 +3655,7 @@ class SchemaTests(TransactionTestCase):
         with connection.schema_editor() as editor:
             editor.create_model(Author)
             editor.create_model(Book)
+        self.isolated_local_models = [Author]
         if connection.vendor == "mysql":
             self.assertForeignKeyExists(
                 Book, "author_id", '"table_author_double_quoted"'
@@ -3660,6 +3666,7 @@ class SchemaTests(TransactionTestCase):
     def test_add_foreign_object(self):
         with connection.schema_editor() as editor:
             editor.create_model(BookForeignObj)
+        self.local_models = [BookForeignObj]
 
         new_field = ForeignObject(
             Author, on_delete=CASCADE, from_fields=["author_id"], to_fields=["id"]
@@ -4223,7 +4230,7 @@ class SchemaTests(TransactionTestCase):
         """
         now = datetime.datetime(month=1, day=1, year=2000, hour=1, minute=1)
         now_tz = datetime.datetime(
-            month=1, day=1, year=2000, hour=1, minute=1, tzinfo=timezone.utc
+            month=1, day=1, year=2000, hour=1, minute=1, tzinfo=datetime.timezone.utc
         )
         mocked_datetime.now = mock.MagicMock(return_value=now)
         mocked_tz.now = mock.MagicMock(return_value=now_tz)
@@ -4338,7 +4345,7 @@ class SchemaTests(TransactionTestCase):
                 apps = new_apps
                 db_table = '"%s"."DJANGO_DOCUMENT_TABLE"' % oracle_user
 
-        self.local_models = [Student, Document]
+        self.isolated_local_models = [Student, Document]
 
         with connection.schema_editor() as editor:
             editor.create_model(Student)
